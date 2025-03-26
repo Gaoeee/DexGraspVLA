@@ -16,9 +16,9 @@ import pickle
 # Adapted from https://github.com/lucidrains/pi-zero-pytorch/blob/e82fced40e55023a0ded22ab3bda495964353253/pi_zero_pytorch/pi_zero.py#L216
 def noise_assignment(data, noise):
     device = data.device
-    data, noise = tuple(rearrange(t, 'b ... -> b (...)') for t in (data, noise))
-    dist = torch.cdist(data, noise)
-    _, assign = linear_sum_assignment(dist.cpu())
+    data, noise = tuple(rearrange(t, 'b ... -> b (...)') for t in (data, noise)) # [8, 832]
+    dist = torch.cdist(data, noise) #成对计算欧式距离 [8,8]
+    _, assign = linear_sum_assignment(dist.cpu())  # 匈牙利算法，找到最小化总距离的匹配
     return torch.from_numpy(assign).to(device)
 
 class DexGraspVLAController(BaseImagePolicy):
@@ -38,14 +38,14 @@ class DexGraspVLAController(BaseImagePolicy):
         super().__init__()
 
         # parse shapes
-        action_shape = shape_meta['action']['shape']
+        action_shape = shape_meta['action']['shape'] #13
         assert len(action_shape) == 1
         action_dim = action_shape[0]
         action_horizon = shape_meta['action']['horizon']
         
         obs_shape, obs_part_length = obs_encoder.output_shape()
-        n_emb = obs_shape[-1]
-        obs_tokens = obs_shape[-2]
+        n_emb = obs_shape[-1]  #1024
+        obs_tokens = obs_shape[-2] #2739
         
         model = TransformerForActionDiffusion(
             input_dim=action_dim,
@@ -175,7 +175,8 @@ class DexGraspVLAController(BaseImagePolicy):
         print(f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters")
         print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
 
-        fused_available = 'fused' in inspect.signature(torch.optim.AdamW).parameters
+        # fused_available = 'fused' in inspect.signature(torch.optim.AdamW).parameters //TODO
+        fused_available = False
         print(f"Fused AdamW available: {fused_available}")
         optimizer = torch.optim.AdamW(
             optim_groups, lr=lr, betas=betas, fused=fused_available
@@ -186,35 +187,35 @@ class DexGraspVLAController(BaseImagePolicy):
         # normalize input
         assert 'valid_mask' not in batch
         # nobs = self.normalizer.normalize(batch['obs'])
-        nobs = batch['obs']
-        nactions = self.normalizer['action'].normalize(batch['action'])
+        nobs = batch['obs'] # 只有1帧
+        nactions = self.normalizer['action'].normalize(batch['action'])  # 归一化到[-1,1] 64帧 [B, 64, 13]
         trajectory = nactions
 
         # process input
-        obs_tokens = self.obs_encoder(nobs, training)
+        obs_tokens = self.obs_encoder(nobs, training) # [8, 2739, 1024]
         # (B, N, n_emb)
         
         # Sample noise that we'll add to the images
-        noise = torch.randn(trajectory.shape, device=trajectory.device)
-        assignment = noise_assignment(trajectory, noise)
+        noise = torch.randn(trajectory.shape, device=trajectory.device)  # [8, 64, 13]
+        assignment = noise_assignment(trajectory, noise) #根据 trajectory 和 noise 的欧几里得距离，为每个 trajectory 的样本找到最匹配的 noise 样本
         noise = noise[assignment]
 
-        # Sample a random timestep for each image
+        # Sample a random timestep for each image 随机生成一个时间步
         timesteps = torch.randint(
             0, self.noise_scheduler.config.num_train_timesteps, 
             (nactions.shape[0],), device=trajectory.device
-        ).long()
+        ).long()  #[8]
 
         # Add noise to the clean images according to the noise magnitude at each timestep
-        # (this is the forward diffusion process)
+        # (this is the forward diffusion process) 根据采样的时间步，给每个样本添加噪声
         noisy_trajectory = self.noise_scheduler.add_noise(
-            trajectory, noise, timesteps)
+            trajectory, noise, timesteps) # torch.Size([8, 64, 13])
 
         # Predict the noise residual
         pred, _ = self.model(
-            noisy_trajectory,
+            noisy_trajectory, # torch.Size([8, 64, 13])
             timesteps, 
-            cond=obs_tokens,
+            cond=obs_tokens, # torch.Size([8, 2739, 1024])
             training=training,
             gen_attn_map=False
         )

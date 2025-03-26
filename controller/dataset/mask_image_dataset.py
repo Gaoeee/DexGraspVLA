@@ -41,7 +41,7 @@ class MaskImageDataset(BaseImageDataset):
             
             # Create train mask
             val_mask = get_val_mask(
-                n_episodes=replay_buffer.n_episodes,
+                n_episodes=replay_buffer.n_episodes,  # len(self.episode_ends)
                 val_ratio=val_ratio,
                 seed=seed)
             train_mask = ~val_mask
@@ -51,12 +51,12 @@ class MaskImageDataset(BaseImageDataset):
                 seed=seed)
             self.train_masks.append(train_mask)
             
-            # Create sampler
+            # Create sampler 重要
             sampler = SequenceSampler(
                 replay_buffer=replay_buffer,
-                sequence_length=horizon,
-                pad_before=pad_before,
-                pad_after=pad_after,
+                sequence_length=horizon, # 64
+                pad_before=pad_before, # 0
+                pad_after=pad_after, # 63
                 episode_mask=train_mask,
                 key_first_k=dict(right_cam_img=n_obs_steps, rgbm=n_obs_steps))
             self.samplers.append(sampler)
@@ -100,7 +100,7 @@ class MaskImageDataset(BaseImageDataset):
 
         rgb = F.interpolate(
             rgb / 255.0,
-            size=self.image_size,
+            size=self.image_size,  # (518, 518)
             mode='bilinear',
             align_corners=False
         )
@@ -136,18 +136,18 @@ class MaskImageDataset(BaseImageDataset):
         return rgb.numpy()
     
     def _sample_to_data(self, sample):
-        right_state = sample['right_state'].astype(np.float32)
-        T_slice = slice(self.n_obs_steps)
+        right_state = sample['right_state'].astype(np.float32) #（64，13）
+        T_slice = slice(self.n_obs_steps)  # slice(None, 1, None) slice(start, stop, step) 用于定义切片的范围和步长
 
         # Process all images in batch
-        mask_processed_frames = self._process_mask_image_batch(sample['rgbm'][T_slice])
+        mask_processed_frames = self._process_mask_image_batch(sample['rgbm'][T_slice])  # 取第一张 插值为518 518
         processed_frames = self._process_image_batch(sample['right_cam_img'][T_slice])
 
         data = {
             'obs': {
                 'rgbm': mask_processed_frames,
                 'right_cam_img': processed_frames,
-                'right_state': right_state[T_slice]
+                'right_state': right_state[T_slice]  # 只取1帧
             },
             'action': sample['action'].astype(np.float32)
         }
@@ -173,14 +173,14 @@ class MaskImageDataset(BaseImageDataset):
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         # Find corresponding sampler
         curr_idx = idx
-        for i, length in enumerate(self.sampler_lens):
+        for i, length in enumerate(self.sampler_lens):  # 遍历所有数据集？
             if curr_idx < length:
-                sample = self.samplers[i].sample_sequence(curr_idx)
+                sample = self.samplers[i].sample_sequence(curr_idx)  # 跳转函数取数据 一个sequence64个数据
                 break
             curr_idx -= length
             
         data = self._sample_to_data(sample)
-        torch_data = dict_apply(data, torch.from_numpy)
+        torch_data = dict_apply(data, torch.from_numpy) # 递归处理字典将numpy转tensor
         return torch_data
 
     def __len__(self):

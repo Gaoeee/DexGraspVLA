@@ -6,9 +6,9 @@ class ZarrImageReference:
     """Lazy loading image data reference"""
     def __init__(self, zarr_array):
         self.zarr_array = zarr_array
-        self.shape = zarr_array.shape
-        self.dtype = zarr_array.dtype
-        self.chunks = zarr_array.chunks
+        self.shape = zarr_array.shape  # right_cam_img：(3825, 480, 640, 3) rgbm：(3825, 480, 640, 4)
+        self.dtype = zarr_array.dtype  # uint8 
+        self.chunks = zarr_array.chunks # (3, 480, 640, 3) 三个元素划为一个 chunk rgbm：(2, 480, 640, 4)
 
     def __getitem__(self, idx):
         return self.zarr_array[idx]
@@ -38,9 +38,9 @@ class StreamingReplayBuffer(ReplayBuffer):
         # Load metadata
         buffer._meta = dict()
         if 'meta' in src:
-            for key, value in src['meta'].items():
-                if len(value.shape) == 0:
-                    buffer._meta[key] = np.array(value)
+            for key, value in src['meta'].items():  # 'episode_ends'
+                if len(value.shape) == 0:  #标量数据
+                    buffer._meta[key] = np.array(value)  # 转成矩阵
                 else:
                     buffer._meta[key] = value[:]
         
@@ -60,7 +60,7 @@ class StreamingReplayBuffer(ReplayBuffer):
             if key in ['rgbm', 'right_cam_img']:
                 buffer._data[key] = ZarrImageReference(arr)
             else:
-                buffer._data[key] = arr[:]
+                buffer._data[key] = arr[:]  # right_state(3825, 13) action(3825, 13)
                 
         return buffer
 

@@ -239,7 +239,7 @@ class TransformerForActionDiffusion(ModuleAttrMixin):
             'action_horizon': action_horizon
         }
 
-        # RDT blocks
+        # RDT blocks Recurrent Diffusion Transformer Blocks
         self.blocks = nn.ModuleList([
             RDTBlock(
                 hidden_size=n_emb,
@@ -254,11 +254,11 @@ class TransformerForActionDiffusion(ModuleAttrMixin):
         # use RMS Norm referring to RDT
         # "our problem can be considered as a time series forecasting task, and the centering operation in the original DiTs' LayerNorm could cause token shift and attention shift, thus destroying the symmetry of the time series"
         self.ln_f = RmsNorm(n_emb, eps=1e-6)
-        self.head = nn.Linear(n_emb, output_dim)
+        self.head = nn.Linear(n_emb, output_dim)  # 映射回动作空间
 
         self.action_horizon = action_horizon
         
-        # init
+        # init  # TODO整个模型及其所有子模块递归地调用 _init_weights 函数，以完成模型参数的初始化 不懂 
         self.apply(self._init_weights)
         logger.info(
             "Number of parameters in DiT: %e", sum(p.numel() for p in self.parameters())

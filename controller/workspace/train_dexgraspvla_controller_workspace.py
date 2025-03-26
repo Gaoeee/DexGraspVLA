@@ -46,10 +46,10 @@ class TrainDexGraspVLAControllerWorkspace(BaseWorkspace):
 
         # configure model
         self.model: DexGraspVLAController
-        self.model = hydra.utils.instantiate(cfg.policy)
+        self.model = hydra.utils.instantiate(cfg.policy) # 初始化
 
-        self.ema_model: DexGraspVLAController = None
-        if cfg.training.use_ema:
+        self.ema_model: DexGraspVLAController = None  # 预期类型 没有实例化
+        if cfg.training.use_ema:  # 通过平滑权重减少训练过程的波动，通常用于推理阶段
             self.ema_model = copy.deepcopy(self.model)
 
         # do not save optimizer if resume=False
@@ -73,7 +73,7 @@ class TrainDexGraspVLAControllerWorkspace(BaseWorkspace):
             log_with='wandb',
             mixed_precision='bf16',  # Enable BF16 mixed precision training
             device_placement=True
-        )
+        )  # 分布式训练工具
 
         if accelerator.is_main_process:
             print(f"Using mixed precision: {accelerator.mixed_precision}")
@@ -105,11 +105,11 @@ class TrainDexGraspVLAControllerWorkspace(BaseWorkspace):
         # compute normalizer on the main process and save to disk
         normalizer_path = os.path.join(self.output_dir, 'normalizer.pkl')
         if accelerator.is_main_process:
-            normalizer = dataset.get_normalizer()
+            normalizer = dataset.get_normalizer() # 操作 action right_state 获得归一化工具
             pickle.dump(normalizer, open(normalizer_path, 'wb'))
 
         # load normalizer on all processes
-        accelerator.wait_for_everyone()
+        accelerator.wait_for_everyone() # 确保所有进程都到达此点，避免某些进程提前尝试加载尚未生成的文件
         normalizer = pickle.load(open(normalizer_path, 'rb'))
 
         # configure validation dataset
@@ -125,12 +125,12 @@ class TrainDexGraspVLAControllerWorkspace(BaseWorkspace):
             cfg.training.lr_scheduler,
             optimizer=self.optimizer,
             num_warmup_steps=cfg.training.lr_warmup_steps,
-            num_training_steps=(
+            num_training_steps=(  # len(train_dataloader)=datasize/batchsize
                 len(train_dataloader) * cfg.training.num_epochs) \
-                    // cfg.training.gradient_accumulate_every,
+                    // cfg.training.gradient_accumulate_every,   # 梯度累计的步数？
             # pytorch assumes stepping LRScheduler every epoch
             # however huggingface diffusers steps it every batch
-            last_epoch=self.global_step-1
+            last_epoch=self.global_step-1  # 已经完成的步数?
         )
 
         # configure ema
@@ -153,7 +153,7 @@ class TrainDexGraspVLAControllerWorkspace(BaseWorkspace):
             **cfg.checkpoint.topk
         )
 
-        # accelerator
+        # accelerator 加载支持分布训练
         train_dataloader, val_dataloader, self.model, self.optimizer, lr_scheduler = accelerator.prepare(
             train_dataloader, val_dataloader, self.model, self.optimizer, lr_scheduler
         )
@@ -177,14 +177,14 @@ class TrainDexGraspVLAControllerWorkspace(BaseWorkspace):
         log_path = os.path.join(self.output_dir, 'logs.json.txt')
         with JsonLogger(log_path) as json_logger:
             for local_epoch_idx in range(cfg.training.num_epochs):
-                self.model.train()
+                self.model.train()  # 设置模块
 
                 step_log = dict()
 
                 train_losses = list()
                 with tqdm.tqdm(train_dataloader, desc=f"Training epoch {self.epoch}", 
                         leave=False, mininterval=cfg.training.tqdm_interval_sec) as tepoch:
-                    for batch_idx, batch in enumerate(tepoch):
+                    for batch_idx, batch in enumerate(tepoch):  # 数据准备与处理
                         # device transfer
                         batch = dict_apply(batch, lambda x: x.to(device, non_blocking=True))
                         if train_sampling_batch is None:
@@ -194,7 +194,7 @@ class TrainDexGraspVLAControllerWorkspace(BaseWorkspace):
                         train_sampling_batch = batch
 
                         # compute loss
-                        raw_loss = self.model(batch, training=True)
+                        raw_loss = self.model(batch, training=True) # 推理
                         loss = raw_loss / cfg.training.gradient_accumulate_every
                         accelerator.backward(loss)
                         torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=0.5)

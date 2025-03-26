@@ -202,25 +202,25 @@ def _fit(data: Union[torch.Tensor, np.ndarray, zarr.Array],
     # convert shape
     dim = 1
     if last_n_dims > 0:
-        dim = np.prod(data.shape[-last_n_dims:])
-    data = data.reshape(-1,dim)
+        dim = np.prod(data.shape[-last_n_dims:]) #13  np.prod(...)输入数组中所有元素的乘积
+    data = data.reshape(-1,dim) # [3825, 13]
 
     # compute input stats min max mean std
-    input_min, _ = data.min(axis=0)
-    input_max, _ = data.max(axis=0)
-    input_mean = data.mean(axis=0)
-    input_std = data.std(axis=0)
+    input_min, _ = data.min(axis=0) # [13]
+    input_max, _ = data.max(axis=0) # [13]
+    input_mean = data.mean(axis=0) # [13]
+    input_std = data.std(axis=0) # [13]
 
     # compute scale and offset
     if mode == 'limits':
         if fit_offset:
             # unit scale
             input_range = input_max - input_min
-            ignore_dim = input_range < range_eps
-            input_range[ignore_dim] = output_max - output_min
-            scale = (output_max - output_min) / input_range
-            offset = output_min - scale * input_min
-            offset[ignore_dim] = (output_max + output_min) / 2 - input_min[ignore_dim]
+            ignore_dim = input_range < range_eps  # 小于阈值的维度 数据几乎不变
+            input_range[ignore_dim] = output_max - output_min # 2
+            scale = (output_max - output_min) / input_range # scale 决定了如何将输入数据从原始范围映射到目标范围
+            offset = output_min - scale * input_min # 确保对齐下界 x[-1，1] = x[input_min,input_max] * scale + offset  解方程获得scale offset
+            offset[ignore_dim] = (output_max + output_min) / 2 - input_min[ignore_dim] # 0-input_min[ignore_dim]  结果会映射到0附近
             # ignore dims scaled to mean of output max and min
         else:
             # use this when data is pre-zero-centered.
@@ -257,7 +257,7 @@ def _fit(data: Union[torch.Tensor, np.ndarray, zarr.Array],
         })
     })
     for p in this_params.parameters():
-        p.requires_grad_(False)
+        p.requires_grad_(False)  # 所有参数都不需要梯度
     return this_params
 
 
