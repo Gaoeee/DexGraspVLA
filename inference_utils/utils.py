@@ -97,7 +97,7 @@ def preprocess_img(image):
     height, width = image.shape[:2]
     processed_image = np.ones_like(image) * 255
     
-    # Calculate crop area based on image ratio
+    # Calculate crop area based on image ratio  # TODO 这是设定的机器人抓取的工作区域应该可以改
     h_start = int(height * 0.0)
     h_end = int(height * 0.55)
     w_start = int(width * 0.4)
@@ -127,7 +127,7 @@ def cubic_spline_interpolation_7d(points, step=0.01):
 
 def get_start_command():
     # Clear input buffer
-    sys.stdin.flush()
+    sys.stdin.flush() # 清除输入缓冲区
     while True:
         user_input = input("Press <Enter> to start, <q> to quit.")
         if user_input == 'q':

@@ -41,7 +41,7 @@ class DexGraspVLAController(BaseImagePolicy):
         action_shape = shape_meta['action']['shape'] #13
         assert len(action_shape) == 1
         action_dim = action_shape[0]
-        action_horizon = shape_meta['action']['horizon']
+        action_horizon = shape_meta['action']['horizon']  # 1?
         
         obs_shape, obs_part_length = obs_encoder.output_shape()
         n_emb = obs_shape[-1]  #1024
@@ -85,7 +85,7 @@ class DexGraspVLAController(BaseImagePolicy):
             device=self.device)
     
         # set step values
-        scheduler.set_timesteps(self.num_inference_steps)
+        scheduler.set_timesteps(self.num_inference_steps)  #16
         
         # Store attention maps for all timesteps
         all_timestep_attention_maps = {}
@@ -111,22 +111,22 @@ class DexGraspVLAController(BaseImagePolicy):
         assert 'past_action' not in obs_dict # not implemented yet
         # normalize input
         # nobs = self.normalizer.normalize(obs_dict)
-        nobs = obs_dict
+        nobs = obs_dict  # 获取批次大小
         B = next(iter(nobs.values())).shape[0]
         
         # process input
-        obs_tokens = self.obs_encoder(nobs, training=False)
+        obs_tokens = self.obs_encoder(nobs, training=False) # 输入观测值，输出观测值的token化表示 [1, 2739, 1024]
         # (B, N, n_emb)
         
-        # run sampling
+        # run sampling 采样出动作序列
         nsample, all_timestep_attention_maps = self.conditional_sample(
             cond=obs_tokens,
             gen_attn_map=True if output_path is not None else False,
             **self.kwargs)
 
         # unnormalize prediction
-        assert nsample.shape == (B, self.action_horizon, self.action_dim)
-        action_pred = self.normalizer['action'].unnormalize(nsample)
+        assert nsample.shape == (B, self.action_horizon, self.action_dim) # 预测的动作序列 [1, 64, 13]
+        action_pred = self.normalizer['action'].unnormalize(nsample)  # 将预测的动作序列从[-1,1]转换为实际的动作范围
 
         if output_path is not None:
             # Convert tensors in obs_dict to numpy arrays

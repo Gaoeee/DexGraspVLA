@@ -36,7 +36,7 @@ class DexGraspVLAPlanner:
             instruction: str = None,
             max_token: int = 218
     ) -> str:
-        if task_name == "classify_user_prompt":
+        if task_name == "classify_user_prompt":  # 判断是抓取具体物品还是完成一个复杂任务
             prompt = (
                 f"Analyze the following user prompt: {instruction}\n\n"
                 f"User prompt types:\n"
@@ -58,7 +58,7 @@ class DexGraspVLAPlanner:
                 f"- \"clear the table\" -> False: No specific object characteristics mentioned"
             )
 
-        elif task_name == "decompose_user_prompt":
+        elif task_name == "decompose_user_prompt":  #  抓取排序
             prompt = (
                 f"For user prompt: {instruction}\n"
                 f"Process:\n"
@@ -77,7 +77,7 @@ class DexGraspVLAPlanner:
                 f"[\"object with position 1\", \"object with position 2\", ...]"
             )
 
-        elif task_name == "generate_instruction":
+        elif task_name == "generate_instruction":  # TODO 没有考虑instruction,直接抓取视野范围内的所有东西? 一次只给一样东西 应该是循环调用的
             prompt = (
                 f"Analyze the current desktop layout and select the most suitable object to grasp, considering the following factors:\n\n"
                 f"Grasping Strategy:\n"
@@ -190,7 +190,7 @@ class DexGraspVLAPlanner:
         )
 
         response = chat_completion.choices[0].message.content
-        response_lower = response.lower()
+        response_lower = response.lower() # 统一转为小写
 
         self.log(f"Planner response:\n{response}")
 
@@ -208,9 +208,9 @@ class DexGraspVLAPlanner:
             else:
                 raise ValueError(f"The output text {list_output} is not a valid list.")
         elif task_name == "generate_instruction":
-            generate_task_str = parse_json(response)
-            generate_task_json = json_repair.loads(generate_task_str)
-            generate_task = generate_task_json['target']
+            generate_task_str = parse_json(response) # 提取纯JSON
+            generate_task_json = json_repair.loads(generate_task_str) # json_repair 是一个外部库，用于修复和解析可能格式不完全正确的 JSON 字符串
+            generate_task = generate_task_json['target'] 
             if type(generate_task) == str:
                 return generate_task
             else:

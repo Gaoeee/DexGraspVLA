@@ -189,30 +189,30 @@ class RoboticsSystem:
     def low_level_control(self):
         self.init_low_level_control = True
         while True:
-            if self.update_target:
-                if self.init_low_level_control:
-                    arm_joint = self.right_arm.get_current_joint()
+            if self.update_target: # 重新规划轨迹
+                if self.init_low_level_control: # 初始状态
+                    arm_joint = self.right_arm.get_current_joint() # 当前关节状态为起点
                     self.init_low_level_control = False
                 else:
-                    arm_joint = self.arm_traj_interp[self.low_level_target_joint_index]
+                    arm_joint = self.arm_traj_interp[self.low_level_target_joint_index] # 已计算轨迹中的某个点为起点（看上阶段执行到哪步）
 
                 points_7d = np.array([
                     arm_joint,
-                    self.target_right_arm_joint[0],
-                ])
+                    self.target_right_arm_joint[0], 
+                ]) # 起点和终点的7个关节角度 ？
 
-                interpolation_num = self.config['control']['arm_trajectory']['interpolation_num']
+                interpolation_num = self.config['control']['arm_trajectory']['interpolation_num'] # 插值点数
 
-                self.arm_traj_interp = cubic_spline_interpolation_7d(points_7d, step=(1 / interpolation_num))
+                self.arm_traj_interp = cubic_spline_interpolation_7d(points_7d, step=(1 / interpolation_num))  # 三次样条插值轨迹
                 self.low_level_target_joint_index = 0
                 self.update_target = False
 
-            if not self.in_post_run:
-                self.right_arm.move_joint_CANFD(self.arm_traj_interp[self.low_level_target_joint_index])
+            if not self.in_post_run: # 不在后处理阶段  （抓取完就进入后处理？）
+                self.right_arm.move_joint_CANFD(self.arm_traj_interp[self.low_level_target_joint_index]) #发送关节位置
             self.low_level_target_joint_index += 1
-            time.sleep(0.01)
+            time.sleep(0.01) # 100hz  #TODO 插值点数才20，频率有100，20步执行完后怎么办？ 频繁重规划update_target=true？
 
-            if self.low_level_target_joint_index >= interpolation_num - 1:
+            if self.low_level_target_joint_index >= interpolation_num - 1: # 没有下一步动作 保持在这一步
                 self.low_level_target_joint_index = interpolation_num - 1
 
             if not self.running:
@@ -221,9 +221,9 @@ class RoboticsSystem:
 
     def low_level_hand_control(self):
         while True:
-            self.right_hand.set_angles(self.target_right_hand_joint)
-            self.right_hand_joint = self.right_hand.get_angles()
-            time.sleep(0.05)  # TODO: The delay here may need adjustment
+            self.right_hand.set_angles(self.target_right_hand_joint) # 终点手自由度
+            self.right_hand_joint = self.right_hand.get_angles() # 当前自由度？
+            time.sleep(0.05)  # TODO: The delay here may need adjustment  20Hz
             if not self.running:
                 break
 
@@ -240,9 +240,9 @@ class RoboticsSystem:
         """Thread to listen for keyboard input"""
         while True:
             if not self.in_post_run:
-                if select.select([sys.stdin], [], [], 0.1)[0]:
+                if select.select([sys.stdin], [], [], 0.1)[0]: #使用 select 进行非阻塞IO检查，超时时间0.1秒，检测标准输入是否有数据可读。
                     sys.stdin.readline()
-                    self.log("<Enter> detected, ending this episode.")
+                    self.log("<Enter> detected, ending this episode.") # 按一下回车存图
 
                     timestamp = time.strftime("%Y%m%d_%H%M%S")
 
@@ -264,17 +264,17 @@ class RoboticsSystem:
     def check_grasp_success(self):
         while True:
             if not self.in_post_run:
-                current_pose = self.right_arm.get_current_pose()
+                current_pose = self.right_arm.get_current_pose()  # 当前位置
                 current_height = current_pose[2]
                 if current_height > self.height_threshold:
                     base64_image = encode_image_to_base64(self.third_color_image[..., ::-1])
                     image_url = f"data:image/png;base64,{base64_image}"
                     with timer("check_grasp_success", self.log_file):
-                        if self.planner.request_task(
+                        if self.planner.request_task( # 大模型判断抓取是否成功（抓取后的放回任务呢？）
                             frame_path=image_url,
                             task_name="check_grasp_success",
                         ):
-                            self.in_post_run = True
+                            self.in_post_run = True   
                             self.log("Planner believes the task is done.")
             time.sleep(0.1)
             if not self.running:
@@ -327,7 +327,7 @@ class RoboticsSystem:
                     break
                 state = self.get_state()
                 mask = self.get_mask()
-                obs = self.get_obs(state, mask)  # TODO: There might be misalignment between mask and image, needs verification
+                obs = self.get_obs(state, mask)  # TODO: There might be misalignment between mask and image, needs verification 障碍物始终不动的情况下应该是对齐de
                 attn_map_output_path = os.path.join(self.current_attn_maps_dir, f'{self.time_step}.pkl') if self.args.gen_attn_map else None
                 self.time_step += 1
                 obs_dict_np = self.process_obs(env_obs=obs, shape_meta=self.cfg.task.shape_meta)
@@ -354,7 +354,7 @@ class RoboticsSystem:
             self.init_episode(manual=False)
             self.process_user_prompt()
             while True:
-                self.get_current_instruction()
+                self.get_current_instruction()  # 循环确定抓取物品
                 bbox = self.mark_bbox_planner()
                 self.initialize_sam_cutie(bbox)
                 self.reset_flags()
@@ -362,7 +362,7 @@ class RoboticsSystem:
                 self.log("Controller starts executing the current instruction.")
                 # Execute grasping
                 while True:
-                    if self.in_post_run:
+                    if self.in_post_run:  # 后处理  抓取成功后退出
                         break
                     state = self.get_state()
                     mask = self.get_mask()
@@ -373,7 +373,7 @@ class RoboticsSystem:
                     obs_dict = dict_apply(obs_dict_np, 
                         lambda x: torch.from_numpy(x).unsqueeze(0).to(self.device))
                     with torch.no_grad():
-                        action_pred = self.policy.predict_action(obs_dict, attn_map_output_path)
+                        action_pred = self.policy.predict_action(obs_dict, attn_map_output_path)  # 预测的动作序列 [8, 64, 13]
                         action = action_pred[0].detach().to('cpu').numpy()
                     self.execute_action(action)
                 
@@ -449,9 +449,9 @@ class RoboticsSystem:
     
 
     def initialize_sam_cutie(self, bbox):
-        self.processor.clear_memory()
+        self.processor.clear_memory()  # Cutie
         torch.cuda.empty_cache()
-        self.predictor.set_image(self.third_color_image[..., ::-1])
+        self.predictor.set_image(self.third_color_image[..., ::-1]) # sam
 
         masks, scores, _ = self.predictor.predict(box=bbox, multimask_output=True)
         self.best_mask = masks[np.argmax(scores)]
@@ -460,15 +460,15 @@ class RoboticsSystem:
         self.show_and_save_image_with_mask(self.third_color_image[..., ::-1], self.best_mask, img_with_mask_filename)
 
         # Reinitialize Cutie
-        self.mask = torch.from_numpy(self.best_mask.astype('uint8')).cuda()
-        self.objects = np.unique(self.best_mask.astype('uint8'))
-        self.objects = self.objects[self.objects != 0].tolist()
+        self.mask = torch.from_numpy(self.best_mask.astype('uint8')).cuda() # 放到cuda上 SAM生成的初始掩码
+        self.objects = np.unique(self.best_mask.astype('uint8')) # 找出掩码中所有唯一的像素值 需要追踪的对象ID列表
+        self.objects = self.objects[self.objects != 0].tolist() # 过滤掉背景（值为0的像素），只保留前景物体ID 
         self.cutie_initialized = False  # Reset Cutie initialization flag
 
 
     def process_user_prompt(self):
         # Show head camera image
-        plt.imshow(self.third_color_image[..., ::-1])
+        plt.imshow(self.third_color_image[..., ::-1])  # [..., ::-1]表示将图像的RGB通道顺序反转，即将RGB转换为BGR。
         plt.axis('off')
         plt.pause(1)
 
@@ -486,7 +486,7 @@ class RoboticsSystem:
 
         with timer("classify user prompt", self.log_file):
             self.user_prompt_type = self.planner.request_task(
-                            task_name="classify_user_prompt",
+                            task_name="classify_user_prompt",  #判断抓取指令类别
                             instruction=self.user_prompt,
                             max_token=256
             )
@@ -496,11 +496,11 @@ class RoboticsSystem:
             with timer("decompose user prompt", self.log_file):
                 self.object_list = self.planner.request_task(
                             frame_path=image_url,
-                            task_name="decompose_user_prompt",
+                            task_name="decompose_user_prompt", #  确定抓取排序
                             instruction=self.user_prompt,
                             max_token=512
                         )
-                self.log(f"Object list: {self.object_list}.")
+                self.log(f"Object list: {self.object_list}.")  # 抓取顺序
         elif self.user_prompt_type == "TypeII":  # Abstract instruction without specific details
             pass
         else:
@@ -509,13 +509,13 @@ class RoboticsSystem:
 
     def get_current_instruction(self):
         if self.user_prompt_type == "TypeI":  # Explicitly specifies grabbing specific items
-            self.current_instruction = self.object_list[0]
+            self.current_instruction = self.object_list[0] # 抓的第一个物品
         elif self.user_prompt_type == "TypeII":  # Abstract instruction without specific details
             image_url = self.prepare_head_image()
             with timer("generate instruction", self.log_file):
                 self.current_instruction = self.planner.request_task(
                             frame_path=image_url,
-                            task_name="generate_instruction",
+                            task_name="generate_instruction",   # 返回'target' 物品描述
                             instruction=None,
                             max_token=512
                         )
@@ -648,25 +648,25 @@ class RoboticsSystem:
 
 
     def get_state(self):
-        right_hand_joint = self.right_hand_joint.copy()
+        right_hand_joint = self.right_hand_joint.copy() # 20hz的频率更新
         right_arm_joint = self.unscale(self.right_arm.get_current_joint(),
                                                         self.dof_lower_limits[:7], 
-                                                        self.dof_upper_limits[:7])
+                                                        self.dof_upper_limits[:7])  # 将关节角度从转换为[-1,1],名字可能不对
         state = np.concatenate([right_arm_joint, right_hand_joint])
         return state
 
 
     def get_mask(self):
         # Update Cutie mask
-        with torch.no_grad():
+        with torch.no_grad():  # 加速推理过程并节省内存
             image_tensor = to_tensor(self.third_color_image[..., ::-1].copy()).cuda().float()
-            if self.cutie_initialized == False:
+            if self.cutie_initialized == False: # 首次传入
                 output_prob = self.processor.step(image_tensor, self.mask, objects=self.objects)
                 self.cutie_initialized = True
             else:
-                output_prob = self.processor.step(image_tensor)
-            current_mask = self.processor.output_prob_to_mask(output_prob)
-            current_mask_np = current_mask.cpu().numpy().astype(np.uint8)
+                output_prob = self.processor.step(image_tensor) # 只需传入新帧图像，Cutie内部会自动追踪之前识别的物体
+            current_mask = self.processor.output_prob_to_mask(output_prob) # 将概率转换为二值掩码
+            current_mask_np = current_mask.cpu().numpy().astype(np.uint8) # 张量移回cpu,转为numpy
         return current_mask_np
 
 
@@ -676,15 +676,15 @@ class RoboticsSystem:
             self.third_color_image,
             mask[..., None]
         ], axis=-1)
-        self.right_first_color_image_buffer = update_array(
+        self.right_first_color_image_buffer = update_array(  # 观测的图像帧数 目前只观测1帧 (self.cfg.n_obs_steps, resolution[1], resolution[0], 3)
             self.right_first_color_image_buffer, 
             self.right_first_color_image.copy()
         )
-        self.third_color_image_buffer = update_array(
+        self.third_color_image_buffer = update_array( # (self.cfg.n_obs_steps, resolution[1], resolution[0], 4)
             self.third_color_image_buffer, 
             self.third_color_image_with_mask
         )
-        self.state_buffer = update_array(self.state_buffer, state)
+        self.state_buffer = update_array(self.state_buffer, state) # (self.cfg.n_obs_steps, 13)
         obs = {"right_cam_img": self.right_first_color_image_buffer, "rgbm": self.third_color_image_buffer, "right_state": self.state_buffer}
         return obs
     
@@ -692,7 +692,7 @@ class RoboticsSystem:
     def process_obs(self, env_obs, shape_meta):
         """Get observation dictionary, using torch for image processing"""
         obs_dict_np = {}
-        obs_shape_meta = shape_meta['obs']
+        obs_shape_meta = shape_meta['obs'] # 在grasp.yaml里
         
         for key, attr in obs_shape_meta.items():
             type = attr.get('type', 'low_dim')
@@ -705,7 +705,7 @@ class RoboticsSystem:
                 # Scale image
                 rgb = F.interpolate(
                     rgb / 255.0,
-                    size=(shape[1], shape[2]),
+                    size=(shape[1], shape[2]), #[518,518]
                     mode='bilinear',
                     align_corners=False
                 )
@@ -744,12 +744,13 @@ class RoboticsSystem:
 
 
     def execute_action(self, action):
-        for k in range(6):
+        for k in range(6):  # 实际只执行前6步
             state = self.get_state()
             mask = self.get_mask()
-            self.get_obs(state, mask)
+            self.get_obs(state, mask)  # buffer会一直更新，对推理有利
 
             # Execute action
+            self.update_target = True # 每执行一步就重新规划一下轨迹
             self.target_right_arm_joint = self.scale(action[k:k+1, 0:7], self.dof_lower_limits[:7], self.dof_upper_limits[:7])
             self.update_target = True
             self.target_right_hand_joint = self.right_hand.execute_action(action[k, 7:])
@@ -833,10 +834,14 @@ class RoboticsSystem:
 
 
     def right_finish_reset(self):
+        # 1. 移动到放置位置 （预定义）
         self.move_to_target_joint_angle(self.right_placement_joint, step=0.05)
+        # 2. 打开双手
         self.set_left_hand_open()
         self.set_right_hand_open()
+        # 3. 移动到中间位置
         self.move_to_target_joint_angle(self.right_return_medium_joint, step=0.05)
+        # 4. 返回初始位置
         self.move_to_target_joint_angle(self.right_init_qpos, step=0.05)
 
 
@@ -863,8 +868,8 @@ class RoboticsSystem:
 
 
     def reset_flags(self):
-        self.init_low_level_control = True
-        self.target_right_arm_joint = np.array(self.right_init_qpos)[None, :]
+        self.init_low_level_control = True  # 初始状态
+        self.target_right_arm_joint = np.array(self.right_init_qpos)[None, :] # 手臂的初始姿态
         self.update_target = True
         self.in_post_run = False
         self.episode_start = time.time()

@@ -36,8 +36,8 @@ cameras:
 
 # Model Configuration
 sam:
-  checkpoint: null
-  model_type: "vit_h"
+  checkpoint: "segment-anything/weights/sam_vit_l_0b3195.pth"
+  model_type: "vit_l"
 
 planner:
   api_key: "EMPTY"

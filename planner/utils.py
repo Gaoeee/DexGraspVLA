@@ -1,7 +1,7 @@
 import re
 
 
-def parse_json(json_output):
+def parse_json(json_output):  # 提取纯JSON
     lines = json_output.splitlines()
     for i, line in enumerate(lines):
         if line == "```json":

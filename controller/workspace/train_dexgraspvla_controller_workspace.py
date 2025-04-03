@@ -56,7 +56,7 @@ class TrainDexGraspVLAControllerWorkspace(BaseWorkspace):
         if not cfg.training.resume:
             self.exclude_keys = ['optimizer']
 
-        if cfg.policy.start_ckpt_path is not None:
+        if cfg.policy.start_ckpt_path is not None:  # 预训练模型
             print(f"Starting from checkpoint {cfg.policy.start_ckpt_path}")
             self.load_checkpoint(path=cfg.policy.start_ckpt_path)
 
