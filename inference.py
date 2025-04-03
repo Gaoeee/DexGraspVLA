@@ -750,8 +750,8 @@ class RoboticsSystem:
             self.get_obs(state, mask)
 
             # Execute action
-            self.update_target = True
             self.target_right_arm_joint = self.scale(action[k:k+1, 0:7], self.dof_lower_limits[:7], self.dof_upper_limits[:7])
+            self.update_target = True
             self.target_right_hand_joint = self.right_hand.execute_action(action[k, 7:])
 
             # Save data
